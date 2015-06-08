@@ -123,7 +123,6 @@ static char *vte_terminal_get_text_maybe_wrapped(VteTerminal *terminal,
 						 gpointer data,
 						 GArray *attributes,
 						 gboolean include_trailing_spaces);
-static void _vte_terminal_disconnect_pty_read(VteTerminal *terminal);
 static void _vte_terminal_disconnect_pty_write(VteTerminal *terminal);
 static void vte_terminal_stop_processing (VteTerminal *terminal);
 
@@ -3344,9 +3343,10 @@ static void mark_input_source_invalid(VteTerminal *terminal)
 	_vte_debug_print (VTE_DEBUG_IO, "removed poll of vte_terminal_io_read\n");
 	terminal->pvt->pty_input_source = 0;
 }
-static void
-_vte_terminal_connect_pty_read(VteTerminal *terminal)
+void
+vte_terminal_connect_pty_read(VteTerminal *terminal)
 {
+	g_return_if_fail(VTE_IS_TERMINAL(terminal));
 	if (terminal->pvt->pty_channel == NULL) {
 		return;
 	}
@@ -3398,9 +3398,10 @@ _vte_terminal_connect_pty_write(VteTerminal *terminal)
 	}
 }
 
-static void
-_vte_terminal_disconnect_pty_read(VteTerminal *terminal)
+void
+vte_terminal_disconnect_pty_read(VteTerminal *terminal)
 {
+	g_return_if_fail(VTE_IS_TERMINAL(terminal));
 	if (terminal->pvt->pty_input_source != 0) {
 		_vte_debug_print (VTE_DEBUG_IO, "disconnecting poll of vte_terminal_io_read\n");
 		g_source_remove(terminal->pvt->pty_input_source);
@@ -6302,6 +6303,28 @@ vte_terminal_get_cursor_position(VteTerminal *terminal,
 	}
 }
 
+/**
+ * vte_terminal_set_cursor_position:
+ * @terminal: a #VteTerminal
+ * @column: the new cursor column
+ * @row: the new cursor row
+ *
+ * Set the location of the cursor.
+ */
+void
+vte_terminal_set_cursor_position(VteTerminal *terminal,
+				 long column, long row)
+{
+	g_return_if_fail(VTE_IS_TERMINAL(terminal));
+
+	_vte_invalidate_cursor_once(terminal, FALSE);
+	terminal->pvt->cursor.col = column;
+	terminal->pvt->cursor.row = row;
+	_vte_invalidate_cursor_once(terminal, FALSE);
+	_vte_check_cursor_blink(terminal);
+	vte_terminal_queue_cursor_moved(terminal);
+}
+
 static GtkClipboard *
 vte_terminal_clipboard_get(VteTerminal *terminal, GdkAtom board)
 {
@@ -6465,7 +6488,7 @@ vte_terminal_start_selection(VteTerminal *terminal, long x, long y,
         vte_terminal_extend_selection(terminal, x, y, FALSE, TRUE);
 
 	/* Temporarily stop caring about input from the child. */
-	_vte_terminal_disconnect_pty_read(terminal);
+	vte_terminal_disconnect_pty_read(terminal);
 }
 
 static gboolean
@@ -6482,7 +6505,7 @@ _vte_terminal_maybe_end_selection (VteTerminal *terminal)
 		terminal->pvt->selecting = FALSE;
 
 		/* Reconnect to input from the child if we paused it. */
-		_vte_terminal_connect_pty_read(terminal);
+		vte_terminal_connect_pty_read(terminal);
 
 		return TRUE;
 	}
@@ -6980,6 +7003,50 @@ vte_terminal_unselect_all(VteTerminal *terminal)
 	_vte_debug_print(VTE_DEBUG_SELECTION, "Clearing selection.\n");
 
 	vte_terminal_deselect_all (terminal);
+}
+
+/**
+ * vte_terminal_get_selection_block_mode:
+ * @terminal: a #VteTerminal
+ *
+ * Checks whether or not block selection is enabled.
+ *
+ * Returns: %TRUE if block selection is enabled, %FALSE if not
+ */
+gboolean
+vte_terminal_get_selection_block_mode(VteTerminal *terminal) {
+	g_return_val_if_fail(VTE_IS_TERMINAL(terminal), FALSE);
+	return terminal->pvt->selection_block_mode;
+}
+
+/**
+ * vte_terminal_set_selection_block_mode:
+ * @terminal: a #VteTerminal
+ * @block_mode: whether block selection is enabled
+ *
+ * Sets whether or not block selection is enabled.
+ */
+void
+vte_terminal_set_selection_block_mode(VteTerminal *terminal, gboolean block_mode) {
+	g_return_if_fail(VTE_IS_TERMINAL(terminal));
+	terminal->pvt->selection_block_mode = block_mode;
+}
+
+/**
+ * vte_terminal_select_text:
+ * @terminal: a #VteTerminal
+ * @start_col: the starting column for the selection
+ * @start_row: the starting row for the selection
+ * @end_col: the end column for the selection
+ * @end_row: the end row for the selection
+ *
+ * Sets the current selection region.
+ */
+void
+vte_terminal_select_text(VteTerminal *terminal,
+			 long start_col, long start_row,
+			 long end_col, long end_row) {
+	_vte_terminal_select_text(terminal, start_col, start_row, end_col, end_row, 0, 0);
 }
 
 /* Autoscroll a bit. */
@@ -8631,7 +8698,7 @@ vte_terminal_finalize(GObject *object)
 #endif
 		kill(terminal->pvt->pty_pid, SIGHUP);
 	}
-	_vte_terminal_disconnect_pty_read(terminal);
+	vte_terminal_disconnect_pty_read(terminal);
 	_vte_terminal_disconnect_pty_write(terminal);
 	if (terminal->pvt->pty_channel != NULL) {
 		g_io_channel_unref (terminal->pvt->pty_channel);
@@ -12188,7 +12255,7 @@ vte_terminal_set_pty(VteTerminal *terminal,
         g_object_freeze_notify(object);
 
         if (pvt->pty != NULL) {
-                _vte_terminal_disconnect_pty_read(terminal);
+                vte_terminal_disconnect_pty_read(terminal);
                 _vte_terminal_disconnect_pty_write(terminal);
 
                 if (terminal->pvt->pty_channel != NULL) {
@@ -12243,7 +12310,7 @@ vte_terminal_set_pty(VteTerminal *terminal,
         _vte_terminal_setup_utf8 (terminal);
 
         /* Open channels to listen for input on. */
-        _vte_terminal_connect_pty_read (terminal);
+        vte_terminal_connect_pty_read (terminal);
 
         g_object_notify(object, "pty");
 
@@ -12276,7 +12343,7 @@ _vte_terminal_accessible_ref(VteTerminal *terminal)
 }
 
 char *
-_vte_terminal_get_selection(VteTerminal *terminal)
+vte_terminal_get_selection(VteTerminal *terminal)
 {
 	g_return_val_if_fail(VTE_IS_TERMINAL(terminal), NULL);
 

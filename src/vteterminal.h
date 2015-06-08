@@ -169,6 +169,18 @@ void vte_terminal_paste_primary(VteTerminal *terminal) _VTE_GNUC_NONNULL(1);
 
 void vte_terminal_select_all(VteTerminal *terminal) _VTE_GNUC_NONNULL(1);
 void vte_terminal_unselect_all(VteTerminal *terminal) _VTE_GNUC_NONNULL(1);
+gboolean vte_terminal_get_selection_block_mode(VteTerminal *terminal) _VTE_GNUC_NONNULL(1);
+void vte_terminal_set_selection_block_mode(VteTerminal *terminal,
+                                           gboolean block_mode) _VTE_GNUC_NONNULL(1);
+void vte_terminal_select_text(VteTerminal *terminal,
+                              long start_col, long start_row,
+                              long end_col, long end_row) _VTE_GNUC_NONNULL(1);
+char *
+vte_terminal_get_selection(VteTerminal *terminal) _VTE_GNUC_NONNULL(1);
+
+/* pause and unpause output */
+void vte_terminal_disconnect_pty_read(VteTerminal *vte);
+void vte_terminal_connect_pty_read(VteTerminal *vte);
 
 /* By-word selection */
 void vte_terminal_set_word_char_exceptions(VteTerminal *terminal,
@@ -280,6 +292,8 @@ char *vte_terminal_get_text_range(VteTerminal *terminal,
 void vte_terminal_get_cursor_position(VteTerminal *terminal,
 				      glong *column,
                                       glong *row) _VTE_GNUC_NONNULL(1);
+void vte_terminal_set_cursor_position(VteTerminal *terminal,
+				      long column, long row) _VTE_GNUC_NONNULL(1);
 
 /* Add a matching expression, returning the tag the widget assigns to that
  * expression. */
